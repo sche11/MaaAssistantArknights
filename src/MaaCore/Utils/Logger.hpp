@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <mutex>
+#include <streambuf>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -143,8 +144,7 @@ public:
     std::string push(id& i)
     {
         i = 0;
-        if (auto iter =
-                std::find_if(m_state.rbegin(), m_state.rend(), [](int e) { return e != -1; });
+        if (auto iter = std::find_if(m_state.rbegin(), m_state.rend(), [](int e) { return e != -1; });
             iter != m_state.rend()) {
             i = *iter + 1;
         }
@@ -248,40 +248,45 @@ private:
 };
 } // namespace detail
 
-class toansi_ostream
+class console_ostream
 {
     std::reference_wrapper<std::ostream> m_ofs;
 
 public:
-    toansi_ostream(toansi_ostream&&) = default;
-    toansi_ostream(const toansi_ostream&) = default;
-    toansi_ostream& operator=(toansi_ostream&&) = default;
-    toansi_ostream& operator=(const toansi_ostream&) = default;
+    console_ostream(console_ostream&&) = default;
+    console_ostream(const console_ostream&) = default;
+    console_ostream& operator=(console_ostream&&) = default;
+    console_ostream& operator=(const console_ostream&) = default;
 
-    toansi_ostream(std::ostream& stream)
-        : m_ofs(stream)
+    console_ostream(std::ostream& stream) :
+        m_ofs(stream)
     {
     }
 
-    toansi_ostream(std::reference_wrapper<std::ostream> stream)
-        : m_ofs(stream)
+    console_ostream(std::reference_wrapper<std::ostream> stream) :
+        m_ofs(stream)
     {
     }
 
     template <typename T>
     requires has_stream_insertion_operator<std::ostream, T>
-    toansi_ostream& operator<<(T&& v)
+    console_ostream& operator<<(T&& v)
     {
+#ifdef _WIN32
         if constexpr (std::convertible_to<T, std::string_view>) {
-            m_ofs.get() << utils::utf8_to_ansi(std::forward<T>(v));
+            asst::utils::utf8_scope scope(m_ofs.get());
+            m_ofs.get() << std::forward<T>(v);
         }
         else {
             m_ofs.get() << std::forward<T>(v);
         }
+#else
+        m_ofs.get() << std::forward<T>(v);
+#endif
         return *this;
     }
 
-    toansi_ostream& operator<<(std::ostream& (*pf)(std::ostream&))
+    console_ostream& operator<<(std::ostream& (*pf)(std::ostream&))
     {
         m_ofs.get() << pf;
         return *this;
@@ -299,8 +304,8 @@ public:
     ostreams& operator=(ostreams&&) = default;
     ostreams& operator=(const ostreams&) = default;
 
-    ostreams(Args&&... args)
-        : m_ofss(std::forward<Args>(args)...)
+    ostreams(Args&&... args) :
+        m_ofss(std::forward<Args>(args)...)
     {
     }
 
@@ -325,8 +330,7 @@ public:
     }
 
     template <typename Tuple, size_t... Is>
-    static void
-        streams_put(Tuple& t, std::ostream& (*pf)(std::ostream&), std::index_sequence<Is...>)
+    static void streams_put(Tuple& t, std::ostream& (*pf)(std::ostream&), std::index_sequence<Is...>)
     {
         ((convert_reference_wrapper(std::get<Is>(t)) << pf), ...);
     }
@@ -344,8 +348,8 @@ public:
         constexpr separator(const separator&) = default;
         constexpr separator(separator&&) noexcept = default;
 
-        constexpr explicit separator(std::string_view s) noexcept
-            : str(s)
+        constexpr explicit separator(std::string_view s) noexcept :
+            str(s)
         {
         }
 
@@ -372,8 +376,8 @@ public:
         constexpr level(const level&) = default;
         constexpr level(level&&) noexcept = default;
 
-        constexpr explicit level(std::string_view s) noexcept
-            : str(s)
+        constexpr explicit level(std::string_view s) noexcept :
+            str(s)
         {
         }
 
@@ -386,11 +390,17 @@ public:
             return *this;
         }
 
-        static const level debug;
-        static const level trace;
-        static const level info;
-        static const level warn;
-        static const level error;
+        bool enabled = true;
+
+        bool is_enabled() const { return enabled; }
+
+        void set_enabled(bool enable) { enabled = enable; }
+
+        static level debug;
+        static level trace;
+        static level info;
+        static level warn;
+        static level error;
 
         std::string_view str;
     };
@@ -416,29 +426,25 @@ public:
         }
 
         template <typename _stream_t = stream_t>
-        LogStream(std::mutex& mtx, _stream_t&& ofs, Logger::level lv)
-            : m_trace_lock(mtx)
-            , m_ofs(ofs)
+        LogStream(std::mutex& mtx, _stream_t&& ofs, Logger::level lv) :
+            m_trace_lock(mtx),
+            m_ofs(ofs)
         {
             *this << lv;
         }
 
         template <typename _stream_t = stream_t, typename... Args>
-        LogStream(std::mutex& mtx, _stream_t&& ofs, Logger::level lv, Args&&... buff)
-            : m_trace_lock(mtx)
-            , m_ofs(ofs)
+        LogStream(std::mutex& mtx, _stream_t&& ofs, Logger::level lv, Args&&... buff) :
+            m_trace_lock(mtx),
+            m_ofs(ofs)
         {
             ((*this << lv) << ... << std::forward<Args>(buff));
         }
 
         template <typename _stream_t = stream_t, typename... Args>
-        LogStream(
-            std::unique_lock<std::mutex>&& lock,
-            _stream_t&& ofs,
-            Logger::level lv,
-            Args&&... buff)
-            : m_trace_lock(std::move(lock))
-            , m_ofs(ofs)
+        LogStream(std::unique_lock<std::mutex>&& lock, _stream_t&& ofs, Logger::level lv, Args&&... buff) :
+            m_trace_lock(std::move(lock)),
+            m_ofs(ofs)
         {
             ((*this << lv) << ... << std::forward<Args>(buff));
         }
@@ -551,8 +557,65 @@ public:
     template <typename stream_t, typename... Args>
     LogStream(std::unique_lock<std::mutex>&&, stream_t&&, Args&&...) -> LogStream<stream_t>;
 
+    class LogStreambuf : public std::filebuf
+    {
+    public:
+        LogStreambuf(std::filebuf* dest_buf) :
+            dest(dest_buf)
+        {
+        }
+
+        std::streamsize count_bytes() const { return count; }
+
+    protected:
+        int_type overflow(int_type c) override
+        {
+            if (c != traits_type::eof()) {
+                ch = static_cast<char>(c);
+                if (ch == '\n') {
+                    count += NewLineSize;
+                }
+                else {
+                    count++;
+                }
+                if (dest) {
+                    dest->sputc(ch);
+                }
+            }
+            return ch;
+        }
+
+        int sync() override
+        {
+            if (dest) {
+                return dest->pubsync();
+            }
+            return 0;
+        }
+
+        // 处理字符块
+        std::streamsize xsputn(const char* s, std::streamsize n) override
+        {
+            count += n;
+            if (dest) {
+                return dest->sputn(s, n);
+            }
+            return n;
+        }
+
+    private:
+#if defined(_WIN32) || defined(_WIN64)
+        const static std::size_t NewLineSize = 2; // \r\n;
+#else
+        const static std::size_t NewLineSize = 1; // \n;
+#endif
+        char ch = 0;
+        std::filebuf* dest;
+        std::streamsize count = 0;
+    };
+
 public:
-    virtual ~Logger() override { flush(false); }
+    virtual ~Logger() override { flush(); }
 
     // static bool set_directory(const std::filesystem::path& dir)
     // {
@@ -567,25 +630,20 @@ public:
     template <typename T>
     auto operator<<(T&& arg)
     {
-        if (!m_ofs || !m_ofs.is_open()) {
-            m_ofs = std::ofstream(m_log_path, std::ios::out | std::ios::app);
-        }
+        std::unique_lock lock { m_trace_mutex };
+        rotate();
         if constexpr (std::same_as<level, remove_cvref_t<T>>) {
 #ifdef ASST_DEBUG
-            return LogStream(m_trace_mutex, ostreams { toansi_ostream(std::cout), m_ofs }, arg);
+            return LogStream(std::move(lock), ostreams { console_ostream(std::cout), m_of }, arg);
 #else
-            return LogStream(m_trace_mutex, m_ofs, arg);
+            return LogStream(std::move(lock), m_of, arg);
 #endif
         }
         else {
 #ifdef ASST_DEBUG
-            return LogStream(
-                m_trace_mutex,
-                ostreams { toansi_ostream(std::cout), m_ofs },
-                level::trace,
-                arg);
+            return LogStream(std::move(lock), ostreams { console_ostream(std::cout), m_of }, level::trace, arg);
 #else
-            return LogStream(m_trace_mutex, m_ofs, level::trace, arg);
+            return LogStream(std::move(lock), m_of, level::trace, arg);
 #endif
         }
     }
@@ -616,9 +674,14 @@ public:
     inline void debug([[maybe_unused]] Args&&... args)
     {
 #ifdef ASST_DEBUG
-        std::unique_lock lock { m_trace_mutex };
-        log(std::move(lock), level::debug, std::forward<Args>(args)...);
+        constexpr bool need_log = true;
+#else
+        static const bool need_log = std::filesystem::exists("DEBUG.txt");
 #endif
+        if (need_log) {
+            std::unique_lock lock { m_trace_mutex };
+            log(std::move(lock), level::debug, m_scopes.next(), std::forward<Args>(args)...);
+        }
     }
 
 #undef LOGGER_FUNC_WITH_LEVEL
@@ -642,65 +705,88 @@ public:
     template <typename... Args>
     inline void log(level lv, Args&&... args)
     {
-        ((*this << lv) << ... << std::forward<Args>(args));
+        if (lv.is_enabled()) {
+            ((*this << lv) << ... << std::forward<Args>(args));
+        }
     }
 
     template <typename... Args>
     inline void log(std::unique_lock<std::mutex>&& lock, level lv, Args&&... args)
     {
-        if (!m_ofs || !m_ofs.is_open()) {
-            m_ofs = std::ofstream(m_log_path, std::ios::out | std::ios::app);
+        if (!lv.is_enabled()) {
+            return;
         }
+        rotate();
         (LogStream(
              std::move(lock),
 #ifdef ASST_DEBUG
-             ostreams { toansi_ostream(std::cout), m_ofs },
+             ostreams { console_ostream(std::cout), m_of },
 #else
-             m_ofs,
+             m_of,
 #endif
              lv)
          << ... << std::forward<Args>(args));
     }
 
-    void flush(bool rorate_log_file = true)
+    void flush()
     {
         std::unique_lock<std::mutex> m_trace_lock(m_trace_mutex);
         if (m_ofs.is_open()) {
+            m_of.flush();
             m_ofs.close();
-        }
-        if (rorate_log_file) {
-            rotate();
         }
     }
 
 private:
     friend class SingletonHolder<Logger>;
 
-    Logger()
-        : m_directory(UserDir.get())
+    Logger() :
+        m_directory(UserDir.get()),
+        m_buff(nullptr),
+        m_of(&m_buff)
     {
-        std::filesystem::create_directories(m_log_path.parent_path());
-        rotate();
-        log_init_info();
-    }
-
-    void rotate() const
-    {
-        constexpr uintmax_t MaxLogSize = 4ULL * 1024 * 1024;
         try {
-            if (std::filesystem::exists(m_log_path)
-                && std::filesystem::is_regular_file(m_log_path)) {
-                const uintmax_t log_size = std::filesystem::file_size(m_log_path);
-                if (log_size >= MaxLogSize) {
-                    std::filesystem::rename(m_log_path, m_log_bak_path);
-                }
-            }
+            std::filesystem::create_directories(m_log_path.parent_path());
         }
         catch (std::filesystem::filesystem_error& e) {
             std::cerr << e.what() << std::endl;
         }
         catch (...) {
         }
+
+        LoadFileStream();
+        log_init_info();
+    }
+
+    void rotate()
+    {
+        if (!m_of || !m_ofs || !m_ofs.is_open()) {
+            LoadFileStream();
+        }
+        if (m_file_size + m_buff.count_bytes() <= MaxLogSize) {
+            return;
+        }
+        try {
+            if (!std::filesystem::exists(m_log_path) || !std::filesystem::is_regular_file(m_log_path)) {
+                return;
+            }
+            m_ofs.close();
+            std::filesystem::rename(m_log_path, m_log_bak_path);
+            LoadFileStream();
+        }
+        catch (std::filesystem::filesystem_error& e) {
+            std::cerr << e.what() << std::endl;
+        }
+        catch (...) {
+        }
+    }
+
+    void LoadFileStream()
+    {
+        m_ofs = std::ofstream(m_log_path, std::ios::out | std::ios::app);
+        m_file_size = std::filesystem::file_size(m_log_path);
+        m_buff = LogStreambuf(m_ofs.rdbuf());
+        m_of.rdbuf(&m_buff);
     }
 
     void log_init_info()
@@ -721,6 +807,10 @@ private:
     std::filesystem::path m_log_bak_path = m_directory / "debug" / "asst.bak.log";
     std::mutex m_trace_mutex;
     std::ofstream m_ofs;
+    LogStreambuf m_buff;
+    std::ostream m_of;
+    std::size_t m_file_size = 0;
+    const std::size_t MaxLogSize = 64LL * 1024 * 1024;
 };
 
 inline constexpr Logger::separator Logger::separator::none;
@@ -729,18 +819,18 @@ inline constexpr Logger::separator Logger::separator::tab("\t");
 inline constexpr Logger::separator Logger::separator::newline("\n");
 inline constexpr Logger::separator Logger::separator::comma(",");
 
-inline constexpr Logger::level Logger::level::debug("DBG");
-inline constexpr Logger::level Logger::level::trace("TRC");
-inline constexpr Logger::level Logger::level::info("INF");
-inline constexpr Logger::level Logger::level::warn("WRN");
-inline constexpr Logger::level Logger::level::error("ERR");
+inline Logger::level Logger::level::debug("DBG");
+inline Logger::level Logger::level::trace("TRC");
+inline Logger::level Logger::level::info("INF");
+inline Logger::level Logger::level::warn("WRN");
+inline Logger::level Logger::level::error("ERR");
 
 class LoggerAux
 {
 public:
-    explicit LoggerAux(std::string_view func_name)
-        : m_func_name(func_name)
-        , m_start_time(std::chrono::steady_clock::now())
+    explicit LoggerAux(std::string_view func_name) :
+        m_func_name(func_name),
+        m_start_time(std::chrono::steady_clock::now())
     {
 #ifdef ASST_DEBUG
         m_id = Logger::get_instance().push
@@ -790,8 +880,7 @@ private:
 #define LogTraceScope LoggerAux _CatVarNameWithLine(_func_aux_)
 
 #ifndef _MSC_VER
-inline constexpr std::string_view
-    summarize_pretty_function(std::string_view pf) // can be consteval?
+inline constexpr std::string_view summarize_pretty_function(std::string_view pf) // can be consteval?
 {
     // unable to handle something like std::function<void(void)> gen_func()
     const auto paren = pf.find_first_of('(');

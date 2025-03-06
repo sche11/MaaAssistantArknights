@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -12,6 +12,7 @@
 // </copyright>
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -26,14 +27,15 @@ namespace MaaWpfGui.Helper
     {
         private static readonly string _configurationFile = Path.Combine(Environment.CurrentDirectory, "config/gui.json");
         private static readonly string _configurationBakFile = Path.Combine(Environment.CurrentDirectory, "config/gui.json.bak");
-        private static Dictionary<string, Dictionary<string, string>> _kvsMap;
+        private static readonly string _configurationErrorFile = Path.Combine(Environment.CurrentDirectory, "config/gui.error.json");
+        private static ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _kvsMap;
         private static string _current = ConfigurationKeys.DefaultConfiguration;
-        private static Dictionary<string, string> _kvs;
-        private static Dictionary<string, string> _globalKvs;
-
-        private static readonly ILogger _logger = Log.ForContext<ConfigurationHelper>();
+        private static ConcurrentDictionary<string, string> _kvs;
+        private static ConcurrentDictionary<string, string> _globalKvs;
 
         private static readonly object _lock = new();
+
+        private static readonly ILogger _logger = Log.ForContext<ConfigurationHelper>();
 
         public delegate void ConfigurationUpdateEventHandler(string key, string oldValue, string newValue);
 
@@ -57,9 +59,29 @@ namespace MaaWpfGui.Helper
                 return value;
             }
 
+            hasValue = _globalKvs.TryGetValue(key, out value);
+            if (hasValue)
+            {
+                _logger.Information("Read configuration key {Key} with global configuration value {Value}, configuration hit: {HasValue}, configuration value {Value}", key, value, true, value);
+                SetValue(key, value);
+                return value;
+            }
+
             // return hasValue ? value : defaultValue;
             SetValue(key, defaultValue);
             return defaultValue;
+        }
+
+        /// <summary>
+        /// Get a configuration value
+        /// </summary>
+        /// <param name="key">The config key</param>
+        /// <param name="defaultValue">The default value to return if the key is not existed</param>
+        /// <returns>The config value</returns>
+        public static int GetValue(string key, int defaultValue)
+        {
+            var value = GetValue(key, defaultValue.ToString());
+            return int.TryParse(value, out var result) ? result : defaultValue;
         }
 
         public static string GetGlobalValue(string key, string defaultValue)
@@ -77,6 +99,7 @@ namespace MaaWpfGui.Helper
             {
                 _logger.Information("Read global configuration key {Key} with current configuration value {Value}, configuration hit: {HasValue}, configuration value {Value}", key, value, true, value);
                 SetGlobalValue(key, value);
+                DeleteValue(key);
                 return value;
             }
 
@@ -93,55 +116,51 @@ namespace MaaWpfGui.Helper
         /// <returns>The return value of <see cref="Save"/></returns>
         public static bool SetValue(string key, string value)
         {
-            lock (_lock)
+            var old = string.Empty;
+            if (!_kvs.TryAdd(key, value))
             {
-                var old = string.Empty;
-                if (!_kvs.TryAdd(key, value))
-                {
-                    old = _kvs[key];
-                    _kvs[key] = value;
-                }
-
-                var result = Save();
-                if (result)
-                {
-                    ConfigurationUpdateEvent?.Invoke(key, old, value);
-                    _logger.Debug("Configuration {Key} has been set to {Value}", key, value);
-                }
-                else
-                {
-                    _logger.Warning("Failed to save configuration {Key} to {Value}", key, value);
-                }
-
-                return result;
+                old = _kvs[key];
+                _kvs[key] = value;
             }
+
+            var result = Save();
+            if (result)
+            {
+                ConfigurationUpdateEvent?.Invoke(key, old, value);
+                _logger.Debug("Configuration {Key} has been set to {Value}", key, value);
+            }
+            else
+            {
+                _logger.Warning("Failed to save configuration {Key} to {Value}", key, value);
+            }
+
+            return result;
         }
 
         public static bool SetGlobalValue(string key, string value)
         {
-            lock (_lock)
+            var old = string.Empty;
+            if (!_globalKvs.TryAdd(key, value))
             {
-                var old = string.Empty;
-                if (!_globalKvs.TryAdd(key, value))
-                {
-                    old = _globalKvs[key];
-                    _globalKvs[key] = value;
-                }
-
-                var result = Save();
-                if (result)
-                {
-                    ConfigurationUpdateEvent?.Invoke(key, old, value);
-                    _logger.Debug("Global configuration {Key} has been set to {Value}", key, value);
-                }
-                else
-                {
-                    _logger.Warning("Failed to save global configuration {Key} to {Value}", key, value);
-                }
-
-                return result;
+                old = _globalKvs[key];
+                _globalKvs[key] = value;
             }
+
+            var result = Save();
+            if (result)
+            {
+                ConfigurationUpdateEvent?.Invoke(key, old, value);
+                _logger.Debug("Global configuration {Key} has been set to {Value}", key, value);
+            }
+            else
+            {
+                _logger.Warning("Failed to save global configuration {Key} to {Value}", key, value);
+            }
+
+            return result;
         }
+
+        public static bool ContainsKey(string key, bool isGlobal = false) => isGlobal ? _globalKvs.ContainsKey(key) : _kvs.ContainsKey(key);
 
         /// <summary>
         /// Deletes a configuration
@@ -151,28 +170,69 @@ namespace MaaWpfGui.Helper
         // ReSharper disable once UnusedMember.Global
         public static bool DeleteValue(string key)
         {
-            lock (_lock)
+            var old = string.Empty;
+            if (_kvs.TryGetValue(key, out var kv))
             {
-                var old = string.Empty;
-                if (_kvs.TryGetValue(key, out var kv))
-                {
-                    old = kv;
-                }
-
-                _kvs.Remove(key);
-                var result = Save();
-                if (result)
-                {
-                    ConfigurationUpdateEvent?.Invoke(key, old, string.Empty);
-                    _logger.Debug("Configuration {Key} has been deleted", key);
-                }
-                else
-                {
-                    _logger.Warning("Failed to save configuration file when deleted {Key}", key);
-                }
-
-                return result;
+                old = kv;
             }
+
+            _kvs.Remove(key, out _);
+            var result = Save();
+            if (result)
+            {
+                ConfigurationUpdateEvent?.Invoke(key, old, string.Empty);
+                _logger.Debug("Configuration {Key} has been deleted", key);
+            }
+            else
+            {
+                _logger.Warning("Failed to save configuration file when deleted {Key}", key);
+            }
+
+            return result;
+        }
+
+        private static void EnsureConfigDirectoryExists()
+        {
+            if (Directory.Exists("config") is false)
+            {
+                Directory.CreateDirectory("config");
+            }
+        }
+
+        private static bool ParseConfig(out JObject parsed)
+        {
+            parsed = ParseJsonFile(_configurationFile);
+            if (parsed is not null)
+            {
+                return true;
+            }
+
+            if (File.Exists(_configurationFile))
+            {
+                _logger.Warning("Failed to load configuration file, copying configuration file to error file");
+                File.Copy(_configurationFile, _configurationErrorFile, true);
+            }
+
+            if (File.Exists(_configurationBakFile))
+            {
+                _logger.Information("trying to use backup file");
+                parsed = ParseJsonFile(_configurationBakFile);
+                if (parsed is not null)
+                {
+                    _logger.Information("Backup file loaded successfully, copying backup file to configuration file");
+                    File.Copy(_configurationBakFile, _configurationFile, true);
+                    return true;
+                }
+            }
+
+            _logger.Warning("Failed to load configuration file and/or backup file, using default settings");
+
+            _kvsMap = [];
+            _current = ConfigurationKeys.DefaultConfiguration;
+            _kvsMap[_current] = [];
+            _kvs = _kvsMap[_current];
+            _globalKvs = [];
+            return false;
         }
 
         /// <summary>
@@ -181,63 +241,46 @@ namespace MaaWpfGui.Helper
         /// <returns>True if success, false if failed</returns>
         public static bool Load()
         {
-            lock (_lock)
+            EnsureConfigDirectoryExists();
+
+            // Load configuration file
+            if (!ParseConfig(out var parsed))
             {
-                if (Directory.Exists("config") is false)
-                {
-                    Directory.CreateDirectory("config");
-                }
-
-                // Load configuration file
-                var parsed = ParseJsonFile(_configurationFile);
-                if (parsed is null)
-                {
-                    if (File.Exists(_configurationBakFile))
-                    {
-                        File.Copy(_configurationBakFile, _configurationFile, true);
-                        parsed = ParseJsonFile(_configurationFile);
-                    }
-                }
-
-                if (parsed is null)
-                {
-                    _logger.Information("Failed to load configuration file, creating a new one");
-
-                    _kvsMap = new Dictionary<string, Dictionary<string, string>>();
-                    _current = ConfigurationKeys.DefaultConfiguration;
-                    _kvsMap[_current] = new Dictionary<string, string>();
-                    _kvs = _kvsMap[_current];
-                    _globalKvs = new Dictionary<string, string>();
-
-                    return false;
-                }
-
-                if (parsed.ContainsKey(ConfigurationKeys.ConfigurationMap))
-                {
-                    // new version
-                    _kvsMap = parsed[ConfigurationKeys.ConfigurationMap]?.ToObject<Dictionary<string, Dictionary<string, string>>>()
-                        ?? new Dictionary<string, Dictionary<string, string>>();
-                    _current = parsed[ConfigurationKeys.CurrentConfiguration]?.ToString()
-                        ?? ConfigurationKeys.DefaultConfiguration;
-                    _kvs = _kvsMap[_current];
-                }
-                else
-                {
-                    // old version
-                    _logger.Information("Configuration file is in old version, migrating to new version");
-
-                    _kvsMap = new Dictionary<string, Dictionary<string, string>>();
-                    _current = ConfigurationKeys.DefaultConfiguration;
-                    _kvsMap[_current] = parsed.ToObject<Dictionary<string, string>>();
-                    _kvs = _kvsMap[_current];
-                }
-
-                _globalKvs = parsed.ContainsKey(ConfigurationKeys.GlobalConfiguration)
-                    ? parsed[ConfigurationKeys.GlobalConfiguration]?.ToObject<Dictionary<string, string>>()
-                    : new Dictionary<string, string>();
-
-                return true;
+                return false;
             }
+
+            SetKvOrMigrate(parsed);
+
+            return true;
+        }
+
+        private static void SetKvOrMigrate(JObject parsed)
+        {
+            bool hasConfigMap = parsed.ContainsKey(ConfigurationKeys.ConfigurationMap);
+            bool hasGlobalConfig = parsed.ContainsKey(ConfigurationKeys.GlobalConfiguration);
+            if (hasConfigMap)
+            {
+                // new version
+                _kvsMap = parsed[ConfigurationKeys.ConfigurationMap]?.ToObject<ConcurrentDictionary<string, ConcurrentDictionary<string, string>>>()
+                          ?? [];
+                _current = parsed[ConfigurationKeys.CurrentConfiguration]?.ToString()
+                           ?? ConfigurationKeys.DefaultConfiguration;
+            }
+            else
+            {
+                // old version
+                _logger.Information("Configuration file is in old version, migrating to new version");
+
+                _kvsMap = [];
+                _current = ConfigurationKeys.DefaultConfiguration;
+                _kvsMap[_current] = parsed.ToObject<ConcurrentDictionary<string, string>>();
+            }
+
+            _kvs = _kvsMap[_current];
+
+            _globalKvs = hasGlobalConfig
+                ? parsed[ConfigurationKeys.GlobalConfiguration]?.ToObject<ConcurrentDictionary<string, string>>()
+                : new ConcurrentDictionary<string, string>();
         }
 
         /// <summary>
@@ -246,38 +289,40 @@ namespace MaaWpfGui.Helper
         /// <returns>The result of saving process</returns>
         private static bool Save(string file = null)
         {
-            if (Released)
+            lock (_lock)
             {
-                _logger.Warning("Attempting to save configuration file after release, this is not allowed");
-                return false;
-            }
+                if (Released)
+                {
+                    _logger.Warning("Attempting to save configuration file after release, this is not allowed");
+                    return false;
+                }
 
-            try
-            {
-                var jsonStr = JsonConvert.SerializeObject(
-                    new Dictionary<string, object>
-                    {
-                        {
-                            ConfigurationKeys.ConfigurationMap, _kvsMap
-                        },
-                        {
-                            ConfigurationKeys.CurrentConfiguration, _current
-                        },
-                        {
-                            ConfigurationKeys.GlobalConfiguration, _globalKvs
-                        },
-                    },
-                    Formatting.Indented);
+                try
+                {
+                    var sortedKvsMap = new SortedDictionary<string, SortedDictionary<string, string>>(
+                        _kvsMap.ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => new SortedDictionary<string, string>(kvp.Value)));
 
-                File.WriteAllText(file ?? _configurationFile, jsonStr);
-            }
-            catch (Exception e)
-            {
-                _logger.Error(e, "Failed to save configuration file.");
-                return false;
-            }
+                    var jsonStr = JsonConvert.SerializeObject(
+                        new SortedDictionary<string, object>
+                        {
+                            { ConfigurationKeys.ConfigurationMap, sortedKvsMap },
+                            { ConfigurationKeys.CurrentConfiguration, _current },
+                            { ConfigurationKeys.GlobalConfiguration, new SortedDictionary<string, string>(_globalKvs) },
+                        },
+                        Formatting.Indented);
 
-            return true;
+                    File.WriteAllText(file ?? _configurationFile, jsonStr);
+                }
+                catch (Exception e)
+                {
+                    _logger.Error(e, "Failed to save configuration file.");
+                    return false;
+                }
+
+                return true;
+            }
         }
 
         public static string GetCheckedStorage(string storageKey, string name, string defaultValue)
@@ -354,10 +399,31 @@ namespace MaaWpfGui.Helper
         {
             lock (_lock)
             {
-                Save();
-                Save(_configurationBakFile);
-                Released = true;
+                if (Released)
+                {
+                    return;
+                }
+
+                if (Save())
+                {
+                    _logger.Information($"{_configurationFile} saved");
+                }
+                else
+                {
+                    _logger.Warning($"{_configurationFile} save failed");
+                }
+
+                if (Save(_configurationBakFile))
+                {
+                    _logger.Information($"{_configurationBakFile} saved");
+                }
+                else
+                {
+                    _logger.Warning($"{_configurationBakFile} save failed");
+                }
             }
+
+            Released = true;
         }
 
         private static JObject ParseJsonFile(string filePath)
@@ -410,7 +476,7 @@ namespace MaaWpfGui.Helper
 
             if (copyFrom is null)
             {
-                _kvsMap[configName] = new Dictionary<string, string>();
+                _kvsMap[configName] = [];
             }
             else
             {
@@ -420,7 +486,7 @@ namespace MaaWpfGui.Helper
                     return false;
                 }
 
-                _kvsMap[configName] = new Dictionary<string, string>(_kvsMap[copyFrom]);
+                _kvsMap[configName] = new ConcurrentDictionary<string, string>(_kvsMap[copyFrom]);
             }
 
             return true;
@@ -440,18 +506,12 @@ namespace MaaWpfGui.Helper
                 return false;
             }
 
-            _kvsMap.Remove(configName);
+            _kvsMap.Remove(configName, out _);
             return true;
         }
 
-        public static List<string> GetConfigurationList()
-        {
-            return _kvsMap.Keys.ToList();
-        }
+        public static List<string> GetConfigurationList() => [.. _kvsMap.Keys.OrderBy(key => key)];
 
-        public static string GetCurrentConfiguration()
-        {
-            return _current;
-        }
+        public static string GetCurrentConfiguration() => _current;
     }
 }

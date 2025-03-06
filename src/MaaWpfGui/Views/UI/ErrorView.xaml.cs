@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -36,6 +36,25 @@ namespace MaaWpfGui.Views.UI
         public string PossibleSolution { get; set; }
 
         public string ExceptionDetails { get; set; }
+
+        private bool _congratulationsOnError = true;
+
+        public string ErrorString { get; set; } = LocalizationHelper.GetString("Error");
+
+        public string ErrorCongratulationsString { get; set; } = LocalizationHelper.GetString("ErrorCongratulations");
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to enable congratulation mode for ErrorView.
+        /// </summary>
+        public bool CongratulationsOnError
+        {
+            get => _congratulationsOnError;
+            set
+            {
+                _congratulationsOnError = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CongratulationsOnError)));
+            }
+        }
 
         public ErrorView()
         {
@@ -71,7 +90,7 @@ namespace MaaWpfGui.Views.UI
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExceptionDetails)));
             ShouldExit = shouldExit;
 
-            var isZhCn = ConfigurationHelper.GetValue(ConfigurationKeys.Localization, LocalizationHelper.DefaultLanguage) == "zh-cn";
+            var isZhCn = ConfigurationHelper.GetGlobalValue(ConfigurationKeys.Localization, LocalizationHelper.DefaultLanguage) == "zh-cn";
             ErrorQqGroupLink.Visibility = isZhCn ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -80,6 +99,12 @@ namespace MaaWpfGui.Views.UI
         private static string GetSolution(string error, string details)
         {
             _ = error; // To avoid warning
+            if (details.Contains("MaaCore.dll not found!") ||
+                details.Contains("resource folder not found!"))
+            {
+                return LocalizationHelper.GetString("ErrorSolutionMoveMaaExeOutOfFolder");
+            }
+
             if (details.Contains("AsstGetVersion()") ||
                 details.Contains("DllNotFoundException") ||
                 details.Contains("lambda_method") ||
@@ -87,6 +112,16 @@ namespace MaaWpfGui.Views.UI
                 (details.Contains("System.Net.Http") && details.Contains("Version")))
             {
                 return LocalizationHelper.GetString("ErrorSolutionCrash");
+            }
+
+            if (details.Contains("CheckAndUpdateNow()") && details.Contains("MoveFile"))
+            {
+                return LocalizationHelper.GetString("ErrorSolutionUpdatePackageExtractionFailed");
+            }
+
+            if (details.Contains("Hyperlink_Click") && details.Contains("StartWithShellExecuteEx"))
+            {
+                return LocalizationHelper.GetString("ErrorSolutionSelectDefaultBrowser");
             }
 
             // ReSharper disable once ConvertIfStatementToReturnStatement
@@ -115,18 +150,15 @@ namespace MaaWpfGui.Views.UI
 
         private void CopyToClipboard()
         {
-            var range = new TextRange(RichTextBox.Document.ContentStart, RichTextBox.Document.ContentEnd);
             var data = new DataObject();
-            data.SetText(range.Text);
-            if (range.CanSave(DataFormats.Rtf))
-            {
-                var ms = new MemoryStream();
-                range.Save(ms, DataFormats.Rtf);
-                var arr = ms.ToArray();
-
-                // Save to RTF doesn't write non-ascii characters (implementation-defined behavior?)
-                data.SetData(DataFormats.Rtf, Encoding.UTF8.GetString(arr));
-            }
+            var textToCopy =
+                $"{LocalizationHelper.GetString("ErrorProlog")}\n" +
+                $"\t{ExceptionMessage}\n" +
+                $"{LocalizationHelper.GetString("ErrorSolution")}\n" +
+                $"\t{PossibleSolution}\n" +
+                $"{LocalizationHelper.GetString("ErrorDetails")}\n" +
+                $"{ExceptionDetails}";
+            data.SetText(textToCopy);
 
             try
             {

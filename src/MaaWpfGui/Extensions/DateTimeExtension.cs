@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -11,9 +11,11 @@
 // but WITHOUT ANY WARRANTY
 // </copyright>
 
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using MaaWpfGui.Constants;
 using MaaWpfGui.Helper;
 
@@ -25,7 +27,7 @@ namespace MaaWpfGui.Extensions
 
         private static string ClientType => ConfigurationHelper.GetValue(ConfigurationKeys.ClientType, string.Empty);
 
-        private static readonly Dictionary<string, int> _clientTypeTimezone = new Dictionary<string, int>
+        private static readonly Dictionary<string, int> _clientTypeTimezone = new()
         {
             { string.Empty, 8 },
             { "Official", 8 },
@@ -54,6 +56,26 @@ namespace MaaWpfGui.Extensions
         public static bool IsAprilFoolsDay(this DateTime dt)
         {
             return dt is { Month: 4, Day: 1 };
+        }
+
+        public static CultureInfo CustomCultureInfo => LocalizationHelper.CustomCultureInfo;
+
+        public static string ToLocalTimeString(this DateTime dt, string? format = null)
+        {
+            var dateTimeFormat = CustomCultureInfo.Name.ToLowerInvariant() switch
+            {
+                "en-us" => "yyyy/MM/dd",
+                _ => CustomCultureInfo.DateTimeFormat.ShortDatePattern,
+            };
+
+            return string.IsNullOrEmpty(format)
+                ? dt.ToLocalTime().ToString($"{dateTimeFormat} HH:mm:ss", CustomCultureInfo)
+                : dt.ToLocalTime().ToString(format, CustomCultureInfo);
+        }
+
+        public static DateTime ToDateTime(this System.Runtime.InteropServices.ComTypes.FILETIME filetime)
+        {
+            return DateTime.FromFileTime(((long)filetime.dwHighDateTime << 32) | (uint)filetime.dwLowDateTime);
         }
     }
 }

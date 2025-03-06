@@ -12,15 +12,15 @@
 #include "Utils/Logger.hpp"
 #include "Utils/Platform.hpp"
 
-asst::CopilotTask::CopilotTask(const AsstCallback& callback, Assistant* inst)
-    : InterfaceTask(callback, inst, TaskType),
-      m_task_file_reload_task_ptr(std::make_shared<TaskFileReloadTask>(callback, inst, TaskType)),
-      m_navigate_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType)),
-      m_not_use_prts_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType)),
-      m_change_difficulty_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType)),
-      m_formation_task_ptr(std::make_shared<BattleFormationTask>(callback, inst, TaskType)),
-      m_battle_task_ptr(std::make_shared<BattleProcessTask>(callback, inst, TaskType)),
-      m_stop_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType))
+asst::CopilotTask::CopilotTask(const AsstCallback& callback, Assistant* inst) :
+    InterfaceTask(callback, inst, TaskType),
+    m_task_file_reload_task_ptr(std::make_shared<TaskFileReloadTask>(callback, inst, TaskType)),
+    m_navigate_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType)),
+    m_not_use_prts_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType)),
+    m_change_difficulty_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType)),
+    m_formation_task_ptr(std::make_shared<BattleFormationTask>(callback, inst, TaskType)),
+    m_battle_task_ptr(std::make_shared<BattleProcessTask>(callback, inst, TaskType)),
+    m_stop_task_ptr(std::make_shared<ProcessTask>(callback, inst, TaskType))
 {
     LogTraceFunction;
 
@@ -39,7 +39,8 @@ asst::CopilotTask::CopilotTask(const AsstCallback& callback, Assistant* inst)
     m_subtasks.emplace_back(start_1_tp);
 
     m_medicine_task_ptr = std::make_shared<ProcessTask>(callback, inst, TaskType);
-    m_medicine_task_ptr->set_tasks({ "BattleStartPre@UseMedicine" }).set_retry_times(0).set_ignore_error(true);
+    m_medicine_task_ptr->set_tasks({ "BattleStartPre@UseMedicine", "BattleStartPre@BattleQuickFormation" })
+        .set_ignore_error(true);
     m_medicine_task_ptr->register_plugin<MedicineCounterTaskPlugin>()->set_count(999999);
     m_subtasks.emplace_back(m_medicine_task_ptr);
 
@@ -64,6 +65,8 @@ bool asst::CopilotTask::set_params(const json::value& params)
 {
     LogTraceFunction;
 
+    using SupportUnitUsage = BattleFormationTask::SupportUnitUsage;
+
     if (m_running) {
         return false;
     }
@@ -85,6 +88,8 @@ bool asst::CopilotTask::set_params(const json::value& params)
     int select_formation = params.get("select_formation", 0);        // 选择第几个编队，0为不选择
     bool add_trust = params.get("add_trust", false);                 // 是否自动补信赖
     bool add_user_additional = params.contains("user_additional");   // 是否自动补用户自定义干员
+    auto support_unit_usage = static_cast<SupportUnitUsage>(
+        params.get("support_unit_usage", static_cast<int>(SupportUnitUsage::None))); // 助战干员使用模式
     std::string support_unit_name = params.get("support_unit_name", std::string());
 
     if (params.contains("add_user_additional")) {
@@ -126,7 +131,10 @@ bool asst::CopilotTask::set_params(const json::value& params)
 
     if (!navigate_name.empty()) {
         Task.get<OcrTaskInfo>(navigate_name + "@Copilot@ClickStageName")->text = { navigate_name };
-        Task.get<OcrTaskInfo>(navigate_name + "@Copilot@ClickedCorrectStage")->text = { navigate_name };
+        std::string replace_navigate_name = navigate_name;
+        utils::string_replace_all_in_place(replace_navigate_name, { { "-", "" } });
+        Task.get<OcrTaskInfo>(navigate_name + "@Copilot@ClickedCorrectStage")->text = { navigate_name,
+                                                                                        replace_navigate_name };
         m_navigate_task_ptr->set_tasks({ navigate_name + "@Copilot@StageNavigationBegin" });
     }
     else {
@@ -138,12 +146,11 @@ bool asst::CopilotTask::set_params(const json::value& params)
     m_not_use_prts_task_ptr->set_enable(need_navigate); // 不使用代理指挥
     m_medicine_task_ptr->set_enable(use_sanity_potion);
 
-    // 关卡名含有"TR"的为教学关,不需要编队
-    m_formation_task_ptr->set_enable(with_formation && navigate_name.find("TR") == std::string::npos);
+    m_formation_task_ptr->set_enable(with_formation);
     m_formation_task_ptr->set_select_formation(select_formation);
     m_formation_task_ptr->set_add_trust(add_trust);
-    m_formation_task_ptr->set_add_user_additional(add_user_additional);
-    m_formation_task_ptr->set_support_unit_name(std::move(support_unit_name));
+    m_formation_task_ptr->set_support_unit_usage(support_unit_usage);
+    m_formation_task_ptr->set_specific_support_unit(support_unit_name);
 
     if (auto opt = params.find<json::array>("user_additional"); add_user_additional && opt) {
         std::vector<std::pair<std::string, int>> user_additional;

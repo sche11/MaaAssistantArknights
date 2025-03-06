@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -17,9 +17,9 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using MaaWpfGui.Constants;
 using MaaWpfGui.Helper;
 using MaaWpfGui.Services.Web;
+using MaaWpfGui.ViewModels.UI;
 using Serilog;
 
 namespace MaaWpfGui.Services.Notification;
@@ -32,8 +32,8 @@ public class DiscordNotificationProvider(IHttpService httpService) : IExternalNo
 
     public async Task<bool> SendAsync(string title, string content)
     {
-        var botToken = ConfigurationHelper.GetValue(ConfigurationKeys.ExternalNotificationDiscordBotToken, string.Empty);
-        var userId = ConfigurationHelper.GetValue(ConfigurationKeys.ExternalNotificationDiscordUserId, string.Empty);
+        var botToken = SettingsViewModel.ExternalNotificationSettings.DiscordBotToken;
+        var userId = SettingsViewModel.ExternalNotificationSettings.DiscordUserId;
 
         var channelId = await CreateDmChannel(botToken, userId);
 

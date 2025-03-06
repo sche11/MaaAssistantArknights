@@ -9,17 +9,17 @@ using namespace asst::battle::roguelike;
 
 bool asst::RoguelikeCopilotConfig::load(const std::filesystem::path& path)
 {
-#ifdef ASST_DEBUG
     LogTraceFunction;
-#endif
 
     bool ret = true;
+    Logger::level::trace.set_enabled(false);
     for (auto& entry : std::filesystem::recursive_directory_iterator(path)) {
         if (!entry.is_regular_file() || entry.path().extension() != ".json") {
             continue;
         }
         ret &= AbstractConfig::load(entry.path());
     }
+    Logger::level::trace.set_enabled(true);
     return ret;
 }
 
@@ -129,8 +129,9 @@ bool asst::RoguelikeCopilotConfig::parse(const json::value& json)
             role_order.emplace_back(role);
         }
         if (is_legal) [[likely]] {
-            ranges::copy(RoleOrder | filter([&](Role role) { return !specified_role.contains(role); }),
-                         std::back_inserter(role_order));
+            ranges::copy(
+                RoleOrder | filter([&](Role role) { return !specified_role.contains(role); }),
+                std::back_inserter(role_order));
             if (role_order.size() != RoleNumber) [[unlikely]] {
                 Log.error("Unexpected role_order size:", role_order.size());
                 return false;

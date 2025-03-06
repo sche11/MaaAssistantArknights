@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -35,17 +35,21 @@ namespace MaaWpfGui.Services.Web
         /// </summary>
         /// <param name="uri">Target Uri</param>
         /// <param name="extraHeader">Extra HTTP Request Headers</param>
+        /// <param name="httpCompletionOption">The HTTP completion option</param>
+        /// <param name="logUri">Whether to log uri</param>
         /// <returns>Response string, null when failed</returns>
-        Task<string?> GetStringAsync(Uri uri, Dictionary<string, string>? extraHeader = null);
+        Task<string?> GetStringAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead, bool logUri = true);
 
         /// <summary>
         /// Send HTTP GET request and get a body stream response
         /// </summary>
         /// <param name="uri">Target Uri</param>
         /// <param name="extraHeader">Extra HTTP Request Headers</param>
+        /// <param name="httpCompletionOption">The HTTP completion option</param>
+        /// <param name="logUri">Whether to log uri</param>
         /// <returns>Response stream, null when failed</returns>
         // ReSharper disable once UnusedMember.Global
-        Task<Stream?> GetStreamAsync(Uri uri, Dictionary<string, string>? extraHeader = null);
+        Task<Stream?> GetStreamAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead, bool logUri = true);
 
         /// <summary>
         /// Send HTTP GET request and get the original <see cref="HttpRequestMessage"/>
@@ -53,8 +57,9 @@ namespace MaaWpfGui.Services.Web
         /// <param name="uri">Target Uri</param>
         /// <param name="extraHeader">Extra HTTP Request Headers</param>
         /// <param name="httpCompletionOption">The HTTP completion option</param>
+        /// <param name="logUri">Whether to log uri</param>
         /// <returns><see cref="HttpRequestMessage"/> object</returns>
-        Task<HttpResponseMessage?> GetAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead);
+        Task<HttpResponseMessage?> GetAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseHeadersRead, bool logUri = true);
 
         /// <summary>
         /// Send HTTP POST request and a string response

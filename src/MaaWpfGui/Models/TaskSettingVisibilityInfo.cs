@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -33,7 +33,8 @@ namespace MaaWpfGui.Models
         private bool _mall;
         private bool _mission;
         private bool _autoRoguelike;
-        private bool _reclamation2;
+        private bool _reclamation;
+        private bool _afterAction;
 
         public bool WakeUp { get => _wakeUp; set => SetAndNotify(ref _wakeUp, value); }
 
@@ -49,9 +50,11 @@ namespace MaaWpfGui.Models
 
         public bool AutoRoguelike { get => _autoRoguelike; set => SetAndNotify(ref _autoRoguelike, value); }
 
-        public bool Reclamation2 { get => _reclamation2; set => SetAndNotify(ref _reclamation2, value); }
+        public bool Reclamation { get => _reclamation; set => SetAndNotify(ref _reclamation, value); }
 
-        public static TaskSettingVisibilityInfo Current { get; } = new TaskSettingVisibilityInfo();
+        public bool AfterAction { get => _afterAction; set => SetAndNotify(ref _afterAction, value); }
+
+        public static TaskSettingVisibilityInfo Current { get; } = new();
 
         public void Set(string taskName, bool enable)
         {
@@ -84,13 +87,16 @@ namespace MaaWpfGui.Models
                 case "AutoRoguelike":
                     AutoRoguelike = enable;
                     break;
-                case "ReclamationAlgorithm2":
-                    Reclamation2 = enable;
+                case "Reclamation":
+                    Reclamation = enable;
+                    break;
+                case "AfterAction":
+                    AfterAction = enable;
                     break;
             }
 
             EnableAdvancedSettings = false;
-            if (Mission || WakeUp)
+            if (Mission || WakeUp || AfterAction)
             {
                 AdvancedSettingsVisibility = false;
             }
@@ -132,7 +138,7 @@ namespace MaaWpfGui.Models
 
         #region 双入口设置可见性
 
-        private bool _customInfrastPlanShowInFightSettings = bool.Parse(ConfigurationHelper.GetValue(ConfigurationKeys.CustomInfrastPlanShowInFightSettings, false.ToString()));
+        private bool _customInfrastPlanShowInFightSettings = Convert.ToBoolean(ConfigurationHelper.GetValue(ConfigurationKeys.CustomInfrastPlanShowInFightSettings, bool.FalseString));
 
         public bool CustomInfrastPlanShowInFightSettings
         {

@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -30,12 +30,13 @@ namespace MaaWpfGui.ViewModels
         /// </summary>
         /// <param name="name">The name.</param>
         /// <param name="storageKey">The storage key.</param>
-        public DragItemViewModel(string name, string storageKey)
+        /// <param name="defaultCheck">The default checked status.</param>
+        public DragItemViewModel(string name, string storageKey, bool defaultCheck = true)
         {
             Name = name;
             OriginalName = name;
             _storageKey = storageKey;
-            IsChecked = Convert.ToBoolean(ConfigurationHelper.GetCheckedStorage(storageKey, name, bool.TrueString));
+            IsChecked = Convert.ToBoolean(ConfigurationHelper.GetCheckedStorage(storageKey, name, defaultCheck.ToString()));
         }
 
         /// <summary>
@@ -44,12 +45,13 @@ namespace MaaWpfGui.ViewModels
         /// <param name="name">The name (viewed name).</param>
         /// <param name="originalName">The original name (may not be the same as viewed name).</param>
         /// <param name="storageKey">The storage key.</param>
-        public DragItemViewModel(string name, string originalName, string storageKey)
+        /// <param name="defaultCheck">The default checked status.</param>
+        public DragItemViewModel(string name, string originalName, string storageKey, bool defaultCheck = true)
         {
             Name = name;
             OriginalName = originalName;
             _storageKey = storageKey;
-            IsChecked = Convert.ToBoolean(ConfigurationHelper.GetCheckedStorage(storageKey, originalName, bool.TrueString));
+            IsChecked = Convert.ToBoolean(ConfigurationHelper.GetCheckedStorage(storageKey, originalName, defaultCheck.ToString()));
         }
 
         private string _originalName;

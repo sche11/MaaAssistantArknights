@@ -18,6 +18,8 @@ bool asst::InfrastReceptionTask::_run()
     if (!enter_facility()) {
         return false;
     }
+
+    receive_message_board();
     click_bottom_left_tab();
 
     close_end_of_clue_exchange();
@@ -42,6 +44,11 @@ bool asst::InfrastReceptionTask::_run()
     return true;
 }
 
+bool asst::InfrastReceptionTask::receive_message_board()
+{
+    return ProcessTask(*this, { "InfrastReceptionReceiveMessageBoard" }).run();
+}
+
 bool asst::InfrastReceptionTask::close_end_of_clue_exchange()
 {
     ProcessTask task_temp(*this, { "EndOfClueExchangeBegin" });
@@ -51,7 +58,8 @@ bool asst::InfrastReceptionTask::close_end_of_clue_exchange()
 bool asst::InfrastReceptionTask::get_clue()
 {
     ProcessTask task_temp(
-        *this, { "InfrastClueSelfNew", "InfrastClueFriendNew", "InfrastClueSelfMaybeFull", "ReceptionFlag" });
+        *this,
+        { "InfrastClueSelfNew", "InfrastClueFriendNew", "InfrastClueSelfMaybeFull", "ReceptionFlag" });
     return task_temp.set_retry_times(ProcessTask::RetryTimesDefault).run();
 }
 
@@ -128,6 +136,7 @@ bool asst::InfrastReceptionTask::proc_clue_vacancy()
         }
         sort_by_horizontal_(*clue_result_opt);
         ctrler()->click(clue_result_opt->back().rect);
+        delay = Task.get("InfrastClue")->post_delay;
         sleep(delay);
     }
     return true;

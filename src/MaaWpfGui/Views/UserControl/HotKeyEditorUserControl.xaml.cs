@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -45,6 +45,8 @@ namespace MaaWpfGui.Views.UserControl
 
             // Get modifiers and key data
             var modifiers = Keyboard.Modifiers;
+            bool isWindowsKeyPressed = Keyboard.IsKeyDown(Key.LWin) || Keyboard.IsKeyDown(Key.RWin);
+            modifiers |= isWindowsKeyPressed ? ModifierKeys.Windows : ModifierKeys.None;
             var key = e.Key;
 
             // When Alt is pressed, SystemKey is used instead

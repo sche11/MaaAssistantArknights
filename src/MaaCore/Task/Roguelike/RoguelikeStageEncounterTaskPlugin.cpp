@@ -2,10 +2,9 @@
 
 #include "Config/Roguelike/RoguelikeStageEncounterConfig.h"
 #include "Controller/Controller.h"
-#include "Status.h"
 #include "Task/ProcessTask.h"
-#include "Utils/ImageIo.hpp"
 #include "Utils/Logger.hpp"
+#include "Vision/Matcher.h"
 
 bool asst::RoguelikeStageEncounterTaskPlugin::verify(AsstMsg msg, const json::value& details) const
 {
@@ -36,18 +35,11 @@ bool asst::RoguelikeStageEncounterTaskPlugin::_run()
 {
     LogTraceFunction;
 
-    auto mode = m_config->get_mode();
-    std::vector events = RoguelikeStageEncounter.get_events(m_config->get_theme());
-    // 刷源石锭模式和烧水模式
-    if (mode == RoguelikeMode::Investment || mode == RoguelikeMode::Collectible) {
-        events = RoguelikeStageEncounter.get_events(m_config->get_theme() + "_deposit");
-    }
-    std::vector<std::string> event_names;
-    std::unordered_map<std::string, Config::RoguelikeEvent> event_map;
-    for (const auto& event : events) {
-        event_names.emplace_back(event.name);
-        event_map.emplace(event.name, event);
-    }
+    const std::string& theme = m_config->get_theme();
+    const RoguelikeMode& mode = m_config->get_mode();
+    std::unordered_map<std::string, Config::RoguelikeEvent> event_map = RoguelikeStageEncounter.get_events(theme, mode);
+    std::vector<std::string> event_names = RoguelikeStageEncounter.get_event_names(theme);
+
     const auto event_name_task_ptr = Task.get("Roguelike@StageEncounterOcr");
     sleep(event_name_task_ptr->pre_delay);
 
@@ -59,12 +51,14 @@ bool asst::RoguelikeStageEncounterTaskPlugin::_run()
     name_analyzer.set_task_info(event_name_task_ptr);
     name_analyzer.set_required(event_names);
     if (!name_analyzer.analyze()) {
-        Log.info("Unknown Event");
+        Log.error("Unknown Event");
+        auto info = basic_info_with_what("EncounterOcrError");
+        callback(AsstMsg::SubTaskExtraInfo, info);
         return true;
     }
     const auto& result_vec = name_analyzer.get_result();
     if (result_vec.empty()) {
-        Log.info("Unknown Event");
+        Log.error("Unknown Event");
         return true;
     }
     std::string text = result_vec.front().text;
@@ -95,9 +89,25 @@ bool asst::RoguelikeStageEncounterTaskPlugin::_run()
     info["details"]["choose_option"] = choose_option;
     callback(AsstMsg::SubTaskExtraInfo, info);
 
+    // 萨卡兹内容拓展 II，#11861
+    if (event.name.starts_with("魂灵见闻：")) {
+        Matcher matcher(image);
+        matcher.set_task_info("Sarkaz@Roguelike@CloseCollectionClose");
+        if (matcher.analyze()) {
+            Log.trace("Found extra 'Plans', click CloseCollectionClose and StageEncounterJudgeClick");
+            ctrler()->click(matcher.get_result().rect);
+            ProcessTask(*this, { "Roguelike@StageEncounterJudgeClick" }).run();
+            ProcessTask(*this, { "Roguelike@StageEncounterJudgeClick2" }).run();
+        }
+    }
+
     const auto click_option_task_name = [&](const int item, const int total) {
-        return m_config->get_theme() + "@Roguelike@OptionChoose" + std::to_string(total) + "-"
-               + std::to_string(item);
+        if (item > total) {
+            Log.warn("Event:", event.name, "Total:", total, "Choice", item, "out of range, switch to choice", total);
+            return m_config->get_theme() + "@Roguelike@OptionChoose" + std::to_string(total) + "-" +
+                   std::to_string(total);
+        }
+        return m_config->get_theme() + "@Roguelike@OptionChoose" + std::to_string(total) + "-" + std::to_string(item);
     };
 
     for (int j = 0; j < 2; ++j) {
@@ -176,9 +186,7 @@ bool asst::RoguelikeStageEncounterTaskPlugin::satisfies_condition(
     return true;
 }
 
-int asst::RoguelikeStageEncounterTaskPlugin::process_task(
-    const Config::RoguelikeEvent& event,
-    const int special_val)
+int asst::RoguelikeStageEncounterTaskPlugin::process_task(const Config::RoguelikeEvent& event, const int special_val)
 {
     for (const auto& requirement : event.choice_require) {
         if (requirement.choose == -1) {

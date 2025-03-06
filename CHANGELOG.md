@@ -1,25 +1,19 @@
-## v5.2.3
+## v5.14.0-beta.3
 
-### 新增 | New
+### 什么神笔 bug | Highlight
 
-* 新增公招 3 星 Tag 的倾向策略 (#8868) @70CentsApple
-* 开放限时开采许可的ui (#8952) @SherkeyXD
-* Mac GUI 支持限时开采许可 @hguandl
-* Mac GUI 领取赠送月卡 @hguandl
+修了修启动无法显示，也不知道有没有用
 
 ### 修复 | Fix
 
-* 修正赠送月卡选项卡位移导致的领取失败问题 @SherkeyXD
+* 尝试修复启动时不显示ui @ABA2396
+* YoStarEN 肉鸽开局分队界面检测ROI扩大 @status102
+
+### 文档 | Docs
+
+* update english schema @Constrat
 
 ### 其他 | Other
 
-* bump maa-cli to v0.4.7 and update docs @wangl-cc
-
-### For Overseas
-
-* 避免识别到不存在的连续作战图标 (#8951) @Manicsteiner
-
-#### YostarKR
-
-* YoStarKR Improved RecruitRefresh recognition score @HX3N
-* YoStarKR fix some ocr @HX3N
+* 自动战斗移除点赞时判断作业是否来自云端 @status102
+* Revert "ci: 临时措施" (#12033) @MistEO

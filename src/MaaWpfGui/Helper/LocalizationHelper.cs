@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -68,7 +68,25 @@ namespace MaaWpfGui.Helper
             }
         }
 
-        private static readonly string _culture = ConfigurationHelper.GetValue(ConfigurationKeys.Localization, DefaultLanguage);
+        private static readonly string _culture = ConfigurationHelper.GetGlobalValue(ConfigurationKeys.Localization, DefaultLanguage);
+
+        private static readonly string _customCulture = ConfigurationHelper.GetGlobalValue(ConfigurationKeys.CustomCulture, string.Empty);
+
+        public static CultureInfo CustomCultureInfo
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_customCulture))
+                {
+                    return CultureInfo.CurrentCulture;
+                }
+
+                return CultureInfo.GetCultures(CultureTypes.AllCultures)
+                    .Any(c => c.Name.Equals(_customCulture, StringComparison.OrdinalIgnoreCase))
+                    ? new CultureInfo(_customCulture)
+                    : CultureInfo.CurrentCulture;
+            }
+        }
 
         /// <summary>
         /// Loads localizations.
@@ -114,7 +132,9 @@ namespace MaaWpfGui.Helper
 
             try
             {
-                Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo(_culture);
+                Thread.CurrentThread.CurrentCulture = !string.IsNullOrEmpty(_customCulture)
+                    ? CustomCultureInfo
+                    : CultureInfo.GetCultureInfo(_culture);
                 FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement), new FrameworkPropertyMetadata(XmlLanguage.GetLanguage(Thread.CurrentThread.CurrentCulture.Name)));
             }
             catch

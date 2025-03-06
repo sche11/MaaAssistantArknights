@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -37,13 +37,13 @@ namespace MaaWpfGui.Services.Web
         {
             get
             {
-                var p = ConfigurationHelper.GetValue(ConfigurationKeys.UpdateProxy, string.Empty);
-                if (string.IsNullOrEmpty(p))
+                var proxy = SettingsViewModel.VersionUpdateSettings.Proxy;
+                if (string.IsNullOrEmpty(proxy))
                 {
                     return string.Empty;
                 }
 
-                return p.Contains("://") ? p : $"http://{p}";
+                return proxy.Contains("://") ? proxy : SettingsViewModel.VersionUpdateSettings.ProxyType + $"://{proxy}";
             }
         }
 
@@ -81,7 +81,7 @@ namespace MaaWpfGui.Services.Web
         {
             try
             {
-                var request = new HttpRequestMessage { RequestUri = uri, Method = HttpMethod.Head, };
+                var request = new HttpRequestMessage { RequestUri = uri, Method = HttpMethod.Head, Version = HttpVersion.Version20, };
 
                 if (extraHeader != null)
                 {
@@ -90,6 +90,8 @@ namespace MaaWpfGui.Services.Web
                         request.Headers.Add(kvp.Key, kvp.Value);
                     }
                 }
+
+                request.Headers.ConnectionClose = true;
 
                 var stopwatch = Stopwatch.StartNew();
                 var response = await _client.SendAsync(request).ConfigureAwait(false);
@@ -105,9 +107,9 @@ namespace MaaWpfGui.Services.Web
             }
         }
 
-        public async Task<string?> GetStringAsync(Uri uri, Dictionary<string, string>? extraHeader = null)
+        public async Task<string?> GetStringAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead, bool logQuery = true)
         {
-            var response = await GetAsync(uri, extraHeader);
+            var response = await GetAsync(uri, extraHeader, httpCompletionOption, logQuery);
 
             if (response?.StatusCode != HttpStatusCode.OK)
             {
@@ -117,9 +119,9 @@ namespace MaaWpfGui.Services.Web
             return await response.Content.ReadAsStringAsync();
         }
 
-        public async Task<Stream?> GetStreamAsync(Uri uri, Dictionary<string, string>? extraHeader = null)
+        public async Task<Stream?> GetStreamAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead, bool logQuery = true)
         {
-            var response = await GetAsync(uri, extraHeader);
+            var response = await GetAsync(uri, extraHeader, httpCompletionOption, logQuery);
 
             if (response?.StatusCode != HttpStatusCode.OK)
             {
@@ -129,11 +131,11 @@ namespace MaaWpfGui.Services.Web
             return await response.Content.ReadAsStreamAsync();
         }
 
-        public async Task<HttpResponseMessage?> GetAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead)
+        public async Task<HttpResponseMessage?> GetAsync(Uri uri, Dictionary<string, string>? extraHeader = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseHeadersRead, bool logQuery = true)
         {
             try
             {
-                var request = new HttpRequestMessage { RequestUri = uri, Method = HttpMethod.Get, };
+                var request = new HttpRequestMessage { RequestUri = uri, Method = HttpMethod.Get, Version = HttpVersion.Version20, };
 
                 if (extraHeader != null)
                 {
@@ -144,13 +146,13 @@ namespace MaaWpfGui.Services.Web
                 }
 
                 var response = await _client.SendAsync(request, httpCompletionOption);
-                response.Log();
+                response.Log(logQuery);
 
                 return response;
             }
             catch (Exception e)
             {
-                _logger.Error(e, "Failed to send GET request to {Uri}", uri);
+                _logger.Error(e, "Failed to send GET request to {Uri}", uri.GetLeftPart(logQuery ? UriPartial.Query : UriPartial.Path));
                 return null;
             }
         }
@@ -160,7 +162,7 @@ namespace MaaWpfGui.Services.Web
             try
             {
                 var body = JsonSerializer.Serialize(content);
-                var message = new HttpRequestMessage(HttpMethod.Post, uri);
+                var message = new HttpRequestMessage(HttpMethod.Post, uri) { Version = HttpVersion.Version20 };
 
                 if (extraHeader is not null)
                 {
@@ -187,7 +189,7 @@ namespace MaaWpfGui.Services.Web
         {
             try
             {
-                var message = new HttpRequestMessage(HttpMethod.Post, uri);
+                var message = new HttpRequestMessage(HttpMethod.Post, uri) { Version = HttpVersion.Version20 };
                 message.Headers.Accept.ParseAdd("application/json");
 
                 if (extraHeader is not null)
@@ -229,7 +231,7 @@ namespace MaaWpfGui.Services.Web
             try
             {
                 var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                using (var tempFileStream = new FileStream(fullFilePathWithTemp, FileMode.Create, FileAccess.Write))
+                await using (var tempFileStream = new FileStream(fullFilePathWithTemp, FileMode.Create, FileAccess.Write))
                 {
                     // 记录初始化
                     long value = 0;
@@ -290,7 +292,11 @@ namespace MaaWpfGui.Services.Web
 
         private HttpClient BuildHttpClient()
         {
-            var handler = new HttpClientHandler { AllowAutoRedirect = true, };
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.All,
+                AllowAutoRedirect = true,
+            };
 
             var proxy = GetProxy();
             if (proxy != null)

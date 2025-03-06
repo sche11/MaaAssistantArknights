@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -46,10 +46,6 @@ namespace MaaWpfGui.Helper
             {
                 _logger.Error(e.Message);
             }
-            finally
-            {
-                _cache ??= [];
-            }
         }
 
         public static void Save()
@@ -59,26 +55,26 @@ namespace MaaWpfGui.Helper
         }
 
         // ReSharper disable once MemberCanBePrivate.Global
-        public static string Get(string url)
+        public static string Get(string? url)
         {
             if (url is null)
             {
                 return string.Empty;
             }
 
-            return _cache.TryGetValue(url.Replace("%23", "#"), out string? ret) ? ret : string.Empty;
+            return _cache.TryGetValue(url, out string? ret) ? ret : string.Empty;
         }
 
         // ReSharper disable once MemberCanBePrivate.Global
         public static void Set(string url, string etag)
         {
-            _cache[url.Replace("%23", "#")] = etag;
+            _cache[url] = etag;
             Save();
         }
 
         public static void Set(HttpResponseMessage? response)
         {
-            var etag = response?.Headers?.ETag?.Tag;
+            var etag = response?.Headers.ETag?.Tag;
             var uri = response?.RequestMessage?.RequestUri?.ToString();
             if (string.IsNullOrEmpty(uri) || string.IsNullOrEmpty(etag))
             {
@@ -94,6 +90,7 @@ namespace MaaWpfGui.Helper
             Dictionary<string, string> headers = new Dictionary<string, string>
             {
                 { "Accept", "application/octet-stream" },
+                { "Connection", "close" },
             };
 
             if (!string.IsNullOrEmpty(etag))
@@ -101,7 +98,7 @@ namespace MaaWpfGui.Helper
                 headers["If-None-Match"] = etag;
             }
 
-            var response = await Instances.HttpService.GetAsync(new Uri(url), headers, httpCompletionOption: HttpCompletionOption.ResponseHeadersRead);
+            var response = await Instances.HttpService.GetAsync(new Uri(url), headers);
             return response;
         }
     }

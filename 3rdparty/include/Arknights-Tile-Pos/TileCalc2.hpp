@@ -5,13 +5,14 @@
 #include <opencv2/core/matx.hpp>
 #include <opencv2/core/types.hpp>
 
-#include "TileCalc.hpp"
+#include "TileDef.hpp"
 
 namespace Map::TileCalc2
 {
 using vec3d = cv::Vec3d;
 using matrix4x4 = cv::Matx44d;
 static constexpr double degree = std::numbers::pi / 180;
+
 inline vec3d camera_pos(const Level& level, bool side = false, int width = 1280, int height = 720)
 {
     const auto [x, y, z] = level.view[side ? 1 : 0];
@@ -38,8 +39,8 @@ inline matrix4x4 camera_matrix_from_trans(
     const vec3d& euler,
     double ratio,
     double fov_2_y = 20 * degree,
-    double far = 1000,
-    double near = 0.3)
+    double far_c = 1000,
+    double near_c = 0.3)
 {
     const double cos_y = std::cos(euler[0]);
     const double sin_y = std::sin(euler[0]);
@@ -65,11 +66,11 @@ inline matrix4x4 camera_matrix_from_trans(
         0, -sin_x, -cos_x, 0, //
         0, 0,      0,      1,
     };
-    const matrix4x4 proj = {
+    const matrix4x4 proj = matrix4x4 {
         // clang-format off
         ratio / tan_f,  0,         0, 0,
         0,              1 / tan_f, 0, 0,
-        0,              0,         -(far + near) / (far - near), -(far * near * 2) / (far - near),
+        0,              0,         -(far_c + near_c) / (far_c - near_c), -(far_c * near_c * 2) / (far_c - near_c),
         0,              0,         -1, 0,
         // clang-format on
     };
@@ -77,20 +78,19 @@ inline matrix4x4 camera_matrix_from_trans(
     return proj * matrixX * matrixY * translate;
 }
 
-inline cv::Point
-    world_to_screen(const Level& level, const vec3d& world_pos, bool side, const vec3d& offset = {})
+inline cv::Point world_to_screen(const Level& level, const vec3d& world_pos, bool side, const vec3d& offset = {})
 {
-    static constexpr double width = 1280;
-    static constexpr double height = 720;
+    static constexpr int width = 1280;
+    static constexpr int height = 720;
     const vec3d pos_cam = camera_pos(level, side, width, height) + offset;
     const vec3d euler = camera_euler_angles_yxz(level, side);
-    const matrix4x4 matrix = camera_matrix_from_trans(pos_cam, euler, height / width);
+    const matrix4x4 matrix = camera_matrix_from_trans(pos_cam, euler, static_cast<double>(height) / width);
     auto result = matrix * cv::Point3d(world_pos);
     result = result / result(3);
     result = (result + cv::Vec4d::ones()) / 2.;
     return {
-        static_cast<int>(result(0) * width),
-        static_cast<int>((1 - result(1)) * height),
+        static_cast<int>(std::round(result(0) * width)),
+        static_cast<int>(std::round((1 - result(1)) * height)),
     };
 }
 
@@ -106,12 +106,7 @@ inline vec3d get_tile_world_pos(const Level& level, int tile_y, int tile_x)
     };
 }
 
-inline auto get_tile_screen_pos(
-    const Level& level,
-    int tile_y,
-    int tile_x,
-    bool side = false,
-    const vec3d& offset = {})
+inline auto get_tile_screen_pos(const Level& level, int tile_y, int tile_x, bool side = false, const vec3d& offset = {})
 {
     return world_to_screen(level, get_tile_world_pos(level, tile_y, tile_x), side, offset);
 }

@@ -2,6 +2,7 @@
 
 #include <ranges>
 
+#include "Config/GeneralConfig.h"
 #include "Config/TaskData.h"
 #include "Controller/Controller.h"
 #include "InstHelper.h"
@@ -27,6 +28,8 @@ bool asst::MedicineCounterTaskPlugin::_run()
     LogTraceFunction;
 
     if (m_used_count >= m_max_count && !m_use_expiring) {
+        LogTrace << __FUNCTION__ << "Needn't to use medicines"
+                 << ",used:" << m_used_count << ",max:" << m_max_count << "use_expiring:" << m_use_expiring;
         return true;
     }
 
@@ -40,6 +43,8 @@ bool asst::MedicineCounterTaskPlugin::_run()
     if (!using_medicine) [[unlikely]] {
         return false;
     }
+    LogTrace << __FUNCTION__ << "Using medicines init finished,"
+             << " using:" << using_medicine->using_count << ", used:" << m_used_count;
 
     // 移除超量使用的理智药后，再次获取理智药数量
     // 如果移除后没有使用任何理智药，则单独返回数据；进入插件时应当有使用至少一瓶药
@@ -99,7 +104,9 @@ bool asst::MedicineCounterTaskPlugin::_run()
 
         if (*sanity_target >= *sanity_max) [[unlikely]] {
             auto waitTime = DrGrandetTaskPlugin::analyze_time_left(image);
-            sleep(waitTime);
+            if (waitTime > 0) {
+                sleep(waitTime);
+            }
         }
     }
 
@@ -112,7 +119,8 @@ bool asst::MedicineCounterTaskPlugin::_run()
     return true;
 }
 
-std::optional<asst::MedicineCounterTaskPlugin::MedicineResult> asst::MedicineCounterTaskPlugin::init_count(cv::Mat image)
+std::optional<asst::MedicineCounterTaskPlugin::MedicineResult>
+    asst::MedicineCounterTaskPlugin::init_count(cv::Mat image) const
 {
     int use = 0;
     MultiMatcher multi_matcher(image);
@@ -152,6 +160,7 @@ std::optional<asst::MedicineCounterTaskPlugin::MedicineResult> asst::MedicineCou
             return std::nullopt;
         }
 
+        // 仅在已使用>=上限时才进行过期判断，否则下次再检查，理智不够会进第二次的
         auto is_expiring = ExpiringStatus::UnSure;
         if (m_used_count >= m_max_count) {
             RegionOCRer expiring_ocr(image);
@@ -168,8 +177,9 @@ std::optional<asst::MedicineCounterTaskPlugin::MedicineResult> asst::MedicineCou
         int using_count = 0, inventory_count = 0;
         if (!utils::chars_to_number(using_count_ocr.get_result().text, using_count) ||
             !utils::chars_to_number(inventory_ocr.get_result().text, inventory_count)) {
-            Log.error(__FUNCTION__, "unable to convert ocr result to int, use:", using_count_ocr.get_result().text,
-                      ", inventory:", inventory_ocr.get_result().text);
+            LogError << __FUNCTION__ << "unable to convert ocr result to int,"
+                     << "use:" << using_count_ocr.get_result().text << ","
+                     << "inventory:" << inventory_ocr.get_result().text;
             return std::nullopt;
         }
         use += using_count;
@@ -177,6 +187,9 @@ std::optional<asst::MedicineCounterTaskPlugin::MedicineResult> asst::MedicineCou
                                           .inventry = inventory_count,
                                           .reduce_button_position = result.rect,
                                           .is_expiring = is_expiring });
+        LogTrace << __FUNCTION__ << "medicine using count:" << using_count << ","
+                 << "inventory count:" << inventory_count << ","
+                 << "is expiring:" << static_cast<int>(is_expiring);
     }
     return MedicineResult { .using_count = use, .medicines = medicines };
 }

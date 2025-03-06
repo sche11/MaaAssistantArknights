@@ -6,6 +6,7 @@
 
 #include "Config/GeneralConfig.h"
 #include "Config/Miscellaneous/OcrPack.h"
+#include "Config/OnnxSessions.h"
 #include "Config/ResourceLoader.h"
 #include "Controller/Controller.h"
 #include "Status.h"
@@ -40,12 +41,14 @@ bool ::AsstExtAPI::set_static_option(StaticOptionKey key, const std::string& val
     case StaticOptionKey::CpuOCR: {
         WordOcr::get_instance().use_cpu();
         CharOcr::get_instance().use_cpu();
+        OnnxSessions::get_instance().use_cpu();
         return true;
     } break;
     case StaticOptionKey::GpuOCR: {
         int device_id = std::stoi(value);
         WordOcr::get_instance().use_gpu(device_id);
         CharOcr::get_instance().use_gpu(device_id);
+        OnnxSessions::get_instance().use_gpu(device_id);
         return true;
     } break;
     default:
@@ -56,7 +59,9 @@ bool ::AsstExtAPI::set_static_option(StaticOptionKey key, const std::string& val
     return false;
 }
 
-Assistant::Assistant(ApiCallback callback, void* callback_arg) : m_callback(callback), m_callback_arg(callback_arg)
+Assistant::Assistant(ApiCallback callback, void* callback_arg) :
+    m_callback(callback),
+    m_callback_arg(callback_arg)
 {
     LogTraceFunction;
 
@@ -100,6 +105,9 @@ Assistant::~Assistant()
     }
     if (m_msg_thread.joinable()) {
         m_msg_thread.join();
+    }
+    if (m_callback) {
+        m_callback(static_cast<AsstMsgId>(AsstMsg::Destroyed), "{}", m_callback_arg);
     }
 }
 
@@ -212,7 +220,8 @@ asst::Assistant::TaskId asst::Assistant::append_task(const std::string& type, co
         ptr = std::make_shared<TASK>(append_callback_for_inst, this); \
     }
 
-    if constexpr (false) {}
+    if constexpr (false) {
+    }
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(FightTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(StartUpTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(CloseDownTask)
@@ -305,14 +314,18 @@ bool asst::Assistant::connect(const std::string& adb_path, const std::string& ad
     return ctrl_connect(adb_path, address, config);
 }
 
-asst::Assistant::AsyncCallId asst::Assistant::async_connect(const std::string& adb_path, const std::string& address,
-                                                            const std::string& config, bool block)
+asst::Assistant::AsyncCallId asst::Assistant::async_connect(
+    const std::string& adb_path,
+    const std::string& address,
+    const std::string& config,
+    bool block)
 {
     LogTraceFunction;
 
     return append_async_call(
         AsyncCallItem::Type::Connect,
-        AsyncCallItem::ConnectParams { .adb_path = adb_path, .address = address, .config = config }, block);
+        AsyncCallItem::ConnectParams { .adb_path = adb_path, .address = address, .config = config },
+        block);
 }
 
 asst::Assistant::AsyncCallId asst::Assistant::async_click(int x, int y, bool block)
@@ -480,8 +493,8 @@ void Assistant::msg_proc()
     }
 }
 
-asst::Assistant::AsyncCallId asst::Assistant::append_async_call(AsyncCallItem::Type type, AsyncCallItem::Parmas params,
-                                                                bool block)
+asst::Assistant::AsyncCallId
+    asst::Assistant::append_async_call(AsyncCallItem::Type type, AsyncCallItem::Parmas params, bool block)
 {
     LogTraceFunction;
 

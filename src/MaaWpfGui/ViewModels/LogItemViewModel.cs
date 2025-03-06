@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -14,6 +14,7 @@
 using System;
 using MaaWpfGui.Constants;
 using MaaWpfGui.Helper;
+using MaaWpfGui.ViewModels.UI;
 using Stylet;
 
 namespace MaaWpfGui.ViewModels
@@ -32,11 +33,7 @@ namespace MaaWpfGui.ViewModels
         /// <param name="dateFormat">The Date format string</param>
         public LogItemViewModel(string content, string color = UiLogColor.Message, string weight = "Regular", string dateFormat = "MM'-'dd'  'HH':'mm':'ss", bool showTime = true)
         {
-            if (Instances.SettingsViewModel.UseLogItemDateFormat)
-            {
-                dateFormat = Instances.SettingsViewModel.LogItemDateFormatString;
-            }
-
+            dateFormat = SettingsViewModel.GuiSettings.LogItemDateFormatString;
             Time = DateTime.Now.ToString(dateFormat);
             Content = content;
             Color = color;

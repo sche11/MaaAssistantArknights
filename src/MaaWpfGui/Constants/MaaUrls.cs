@@ -3,7 +3,7 @@
 // Copyright (C) 2021 MistEO and Contributors
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
@@ -30,6 +30,8 @@ namespace MaaWpfGui.Constants
 
         public const string Telegram = "https://t.me/+Mgc2Zngr-hs3ZjU1";
 
+        public const string Discord = "https://discord.gg/23DfZ9uA4V";
+
         public const string PrtsPlus = "https://prts.plus";
 
         public const string PrtsPlusCopilotGet = "https://prts.maa.plus/copilot/get/";
@@ -51,53 +53,42 @@ namespace MaaWpfGui.Constants
 
         public const string QqChannel = "https://pd.qq.com/s/4j1ju9z47";
 
-        private static string Language => ConfigurationHelper.GetValue(ConfigurationKeys.Localization, LocalizationHelper.DefaultLanguage);
+        public const string GoogleAdbDownloadUrl = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip";
+        public const string AdbMaaMirrorDownloadUrl = "https://ota.maa.plus/MaaAssistantArknights/api/binaries/adb-windows.zip";
+        public const string GoogleAdbFilename = "adb-windows.zip";
 
-        public static string HelpUri => $"{MaaDocs}/{_helpUrl[Language]}";
-
-        public static string OverseasAdaptation => $"{MaaDocs}/{_overseasAdaptation[Language]}";
-
-        public static string CustomInfrastGenerator => $"{MaaDocs}/{_customInfrastGenerator[Language]}";
-
-        // TODO: Add more languages
-        public static readonly string RemoteControlDocument = $"{MaaDocs}/协议文档/远程控制协议.html";
-
-        public static string NewIssueUri => Language switch
-        {
-            "zh-cn" => "https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues/new?assignees=&labels=bug&template=cn-bug-report.yaml",
-            _ => "https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues/new?assignees=&labels=bug&template=en-bug-report.yaml",
-        };
+        private static string Language => ConfigurationHelper.GetGlobalValue(ConfigurationKeys.Localization, LocalizationHelper.DefaultLanguage);
 
         private const string MaaDocs = "https://maa.plus/docs";
 
-        private static readonly Dictionary<string, string> _overseasAdaptation = new Dictionary<string, string>
+        // 常见问题
+        public static string HelpUri => $"{MaaDocs}/{Language}/manual/faq.html";
+
+        // YostarEN resolution info
+        public static string YostarENResolution => $"{MaaDocs}/{Language}/";
+
+        // 外服适配教程
+        public static string OverseasAdaptation => $"{MaaDocs}/{Language}/develop/overseas-client-adaptation.html";
+
+        // 基建排班协议文档
+        public static string CustomInfrastGenerator => $"{MaaDocs}/{Language}/protocol/base-scheduling-schema.html";
+
+        // 远程控制协议文档
+        public static readonly string RemoteControlDocument = $"{MaaDocs}/{Language}/protocol/remote-control-schema.html";
+
+        public static string NewIssueUri => Language switch
         {
-            { "zh-cn", "开发文档/外服适配教程.html" },
-            { "en-us", "en-us/2.5-OVERSEAS_CLIENTS_ADAPTATION.html" },
-            { "ja-jp", "ja-jp/2.5-OVERSEAS_CLIENTS_ADAPTATION.html" },
-            { "ko-kr", "ko-kr/2.5-OVERSEAS_CLIENTS_ADAPTATION.html" },
-            { "zh-tw", "zh-tw/2.5-外服適配教程.html" },
-            { "pallas", "KeepDrinking.html" },
+            "zh-cn" => $"{GitHubIssues}/new?assignees=&labels=bug&template=cn-bug-report.yaml",
+            "zh-tw" => $"{GitHubIssues}/new?assignees=&labels=bug&template=cn-bug-report.yaml",
+            _ => $"{GitHubIssues}/new?assignees=&labels=bug&template=en-bug-report.yaml",
         };
 
-        private static readonly Dictionary<string, string> _helpUrl = new Dictionary<string, string>
-        {
-            { "zh-cn", "用户手册/常见问题.html" },
-            { "en-us", "en-us/1.2-FAQ.html" },
-            { "ja-jp", "ja-jp/1.2-よくある質問.html" },
-            { "ko-kr", "ko-kr/1.2-FAQ.html" },
-            { "zh-tw", "zh-tw/1.2-常見問題.html" },
-            { "pallas", "KeepDrinking.html" },
-        };
+        // 资源更新更新源
+        public const string GithubResourceUpdate = "https://github.com/MaaAssistantArknights/MaaResource/archive/refs/heads/main.zip";
 
-        private static readonly Dictionary<string, string> _customInfrastGenerator = new Dictionary<string, string>
-        {
-            { "zh-cn", "协议文档/基建排班协议.html" },
-            { "en-us", "en-us/3.6-INFRASTRUCTURE_SCHEDULING_SCHEMA.html" },
-            { "ja-jp", "ja-jp/3.6-インフラスケジュール設定.html" },
-            { "ko-kr", "ko-kr/3.6-기반시설_예약_스키마.html" },
-            { "zh-tw", "zh-tw/3.6-基建排班協議.html" },
-            { "pallas", "KeepDrinking.html" },
-        };
+        public const string MirrorChyanWebsite = "https://mirrorchyan.com";
+        public const string MirrorChyanLine1 = "https://mirrorchyan.com";
+        public const string MirrorChyanAppUpdate = $"{MirrorChyanLine1}/api/resources/MAA/latest";
+        public const string MirrorChyanResourceUpdate = $"{MirrorChyanLine1}/api/resources/MaaResource/latest";
     }
 }

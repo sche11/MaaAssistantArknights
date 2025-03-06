@@ -15,7 +15,6 @@
 #include "Platform/AdbLiteIO.h"
 
 #include "ControllerAPI.h"
-#include "ControllerFactory.h"
 
 #include "ControlScaleProxy.h"
 
@@ -38,8 +37,14 @@ public:
     Controller(Controller&&) = delete;
     ~Controller();
 
-    bool
-        connect(const std::string& adb_path, const std::string& address, const std::string& config);
+    std::shared_ptr<ControllerAPI> create_controller(
+        ControllerType type,
+        const std::string& adb_path,
+        const std::string& address,
+        const std::string& config,
+        PlatformType platform_type) const;
+
+    bool connect(const std::string& adb_path, const std::string& address, const std::string& config);
     bool inited() noexcept;
     void set_touch_mode(const TouchMode& mode) noexcept;
     void set_swipe_with_pause(bool enable) noexcept;
@@ -52,15 +57,18 @@ public:
 
     size_t get_version() const noexcept;
 
+    ControllerType get_controller_type() const noexcept;
+
     cv::Mat get_image(bool raw = false);
     cv::Mat get_image_cache() const;
     bool screencap(bool allow_reconnect = false);
 
     bool start_game(const std::string& client_type);
-    bool stop_game();
+    bool stop_game(const std::string& client_type);
 
     bool click(const Point& p);
     bool click(const Rect& rect);
+    bool input(const std::string& text);
 
     bool swipe(
         const Point& p1,
@@ -107,8 +115,6 @@ private:
     ControllerType m_controller_type = ControllerType::Minitouch;
 
     std::shared_ptr<ControllerAPI> m_controller = nullptr;
-
-    std::unique_ptr<ControllerFactory> m_controller_factory = nullptr;
 
     std::shared_ptr<ControlScaleProxy> m_scale_proxy = nullptr;
 

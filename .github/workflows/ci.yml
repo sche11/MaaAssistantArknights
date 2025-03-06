@@ -28,8 +28,17 @@ on:
       - "!**/*.md"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   meta:
+    # Prevent duplicate runs on organization branches with PRs
+    if: github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name !=
+      github.event.pull_request.base.repo.full_name
+
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.set_tag.outputs.tag }}
@@ -40,7 +49,6 @@ jobs:
         with:
           path: temp
           show-progress: false
-          submodules: recursive
 
       - name: Fetch history
         if: ${{ !startsWith(github.ref, 'refs/pull/') }}
@@ -90,6 +98,11 @@ jobs:
           path: CHANGELOG.md
 
   windows:
+    # Prevent duplicate runs on organization branches with PRs
+    if: github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name !=
+      github.event.pull_request.base.repo.full_name
+
     needs: meta
     strategy:
       matrix:
@@ -107,7 +120,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           show-progress: false
-          submodules: recursive
+
+      - name: Fetch submodules
+        run: |
+          git submodule update --init --depth 1 3rdparty/EmulatorExtras
 
       - name: Cache .nuke/temp, ~/.nuget/packages
         id: cache-nuget
@@ -122,7 +138,16 @@ jobs:
         if: steps.cache-nuget.outputs.cache-hit != 'true'
         run: dotnet restore
 
+      - name: Cache MaaDeps
+        id: cache-maadeps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./MaaDeps
+          key: ${{ runner.os }}-${{ matrix.lowercase_target }}-maadeps-${{ hashFiles('./maadeps-download.py') }}
+
       - name: Bootstrap MaaDeps
+        if: steps.cache-maadeps.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -180,17 +205,28 @@ jobs:
           path: artifacts
 
   ubuntu:
+    # Prevent duplicate runs on organization branches with PRs
+    if: github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name !=
+      github.event.pull_request.base.repo.full_name
+
     needs: meta
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         arch: [aarch64, x86_64]
+    permissions:
+      actions: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           show-progress: false
-          submodules: recursive
+
+      - name: Fetch submodules
+        run: |
+          git submodule update --init --depth 1 3rdparty/EmulatorExtras
+          git submodule update --init --depth 1 src/maa-cli
 
       - name: Install cross compile toolchains
         if: ${{ matrix.arch != 'x86_64' }}
@@ -198,11 +234,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install g++-12-aarch64-linux-gnu g++-12-aarch64-linux-gnu
 
-      - name: Setup ccache
-        uses: Chocobo1/setup-ccache-action@v1
-        with:
-          remove_stale_cache: false
-
+      # Caching not necessary on ubuntu runner
       - name: Bootstrap MaaDeps
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -213,6 +245,7 @@ jobs:
         run: |
           mkdir -p build
           cmake -B build \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DMAADEPS_TRIPLET='maa-${{ matrix.arch == 'x86_64' && 'x64' || 'arm64' }}-linux' \
             -DINSTALL_THIRD_LIBS=ON \
             -DINSTALL_RESOURCE=ON \
@@ -223,8 +256,12 @@ jobs:
           mkdir -p install
           cmake --install build --prefix install
         env:
-          CC: ${{ matrix.arch == 'x86_64' && 'ccache gcc-12' || 'ccache aarch64-linux-gnu-gcc-12' }}
-          CXX: ${{ matrix.arch == 'x86_64' && 'ccache g++-12' || 'ccache aarch64-linux-gnu-g++-12' }}
+          CC: ${{ matrix.arch == 'x86_64' && 'gcc-12' || 'aarch64-linux-gnu-gcc-12' }}
+          CXX: ${{ matrix.arch == 'x86_64' && 'g++-12' || 'aarch64-linux-gnu-g++-12' }}
+          CMAKE_COLOR_DIAGNOSTICS: ON
+          CLICOLOR_FORCE: 1
+          CXXFLAGS: | # workaround for gcc bugs
+            -Wno-error=restrict -Wno-error=array-bounds -Wno-error=stringop-overread -Wno-error=missing-field-initializers
 
       - name: Setup Cross Compile Toolchains for CLI
         uses: ./src/maa-cli/.github/actions/setup
@@ -271,9 +308,9 @@ jobs:
           cp -v tools/AppImage/io.github.maaassistantarknights.maaassistantarknights.metainfo.xml Maa.AppDir/usr/share/metainfo/
           wget "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
           # appimagetool with embedded runtime does not support cross build, till AppImage/appimagetool 7a10b8
-          wget "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${{ matrix.arch }}"
+          wget "https://github.com/AppImage/type2-runtime/releases/download/old/runtime-fuse3-${{ matrix.arch }}"
           chmod a+x appimagetool-x86_64.AppImage
-          ARCH=${{ matrix.arch }} ./appimagetool-x86_64.AppImage --runtime-file runtime-${{ matrix.arch }} Maa.AppDir
+          ARCH=${{ matrix.arch }} ./appimagetool-x86_64.AppImage --runtime-file runtime-fuse3-${{ matrix.arch }} Maa.AppDir
           chmod a+x MaaAssistantArknights-${{ matrix.arch }}.AppImage
           mv -v MaaAssistantArknights-${{ matrix.arch }}.AppImage $GITHUB_WORKSPACE/release/MAA-${{ needs.meta.outputs.tag }}-linux-${{ matrix.arch }}.AppImage
 
@@ -292,8 +329,13 @@ jobs:
             release/*.tar.gz
 
   macOS-Core:
+    # Prevent duplicate runs on organization branches with PRs
+    if: github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name !=
+      github.event.pull_request.base.repo.full_name
+
     needs: meta
-    runs-on: macos-13
+    runs-on: macos-14
     strategy:
       matrix:
         arch: [arm64, x86_64]
@@ -302,12 +344,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           show-progress: false
-          submodules: recursive
 
       - name: Install Dependencies
         run: |
           brew install ninja
 
+      # Caching not necessary on macOS runner
       - name: Bootstrap MaaDeps
         run: |
           [[ ${{ matrix.arch }} = "arm64" ]] && triplet="arm64-osx" || triplet="x64-osx"
@@ -331,14 +373,28 @@ jobs:
           path: "install/*.dylib"
 
   macOS-GUI:
+    # Prevent duplicate runs on organization branches with PRs
+    if: github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name !=
+      github.event.pull_request.base.repo.full_name
+
     needs: [meta, macOS-Core]
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           show-progress: false
-          submodules: recursive
+
+      - name: Install Dependencies
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          brew install graphicsmagick imagemagick
+          npm install -g create-dmg
+
+      - name: Fetch submodules
+        run: |
+          git submodule update --init --depth 1 src/MaaMacGui
 
       - name: Download Arm64 MAA from Github
         uses: actions/download-artifact@v4
@@ -354,13 +410,24 @@ jobs:
 
       - name: Install Developer ID Certificate
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: ssrobins/import-codesign-certs@v2
+        uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.HGUANDL_SIGN_CERT_P12 }}
           p12-password: ${{ secrets.HGUANDL_SIGN_CERT_PASSWD }}
 
-      - name: Specify Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_14.3.1.app/Contents/Developer
+      - name: Download Provisioning Profiles
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: apple-actions/download-provisioning-profiles@v3
+        with:
+          bundle-id: "com.hguandl.MeoAsstMac"
+          issuer-id: ${{ secrets.HGUANDL_APPSTORE_ISSUER }}
+          api-key-id: ${{ secrets.HGUANDL_APPSTORE_KEYID }}
+          api-private-key: ${{ secrets.HGUANDL_APPSTORE_KEY }}
+
+      - name: Setup Xcode Toolchain
+        if: true
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
 
       - name: Build Universal Binaries
         run: |
@@ -369,10 +436,28 @@ jobs:
             lipo -create install-arm64/$LIB_NAME install-x86_64/$LIB_NAME -output build/$LIB_NAME
           done
 
+      - name: Archive Runtime Files
+        run: |
+          mkdir runtime && cd runtime
+          name='MAA-${{ needs.meta.outputs.tag }}-macos-runtime-universal'
+          mkdir "$name" && cd "$name"
+          cp -v ../../build/*.dylib .
+          ln -vs libonnxruntime*.dylib libonnxruntime.dylib
+          ln -vs libopencv_world4*.dylib libopencv_world4.dylib
+          cp -vr ../../resource .
+          cd .. || exit 1
+          zip -yrX9 "$name.zip" "$name"
+
+      - name: Upload MAA runtime to Github
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAA-macos-runtime-universal
+          path: runtime/MAA-${{ needs.meta.outputs.tag }}-macos-runtime-universal.zip
+
       - name: Build XCFramework
         run: |
           xcodebuild -create-xcframework -library libMaaCore.dylib -headers ../include -output MaaCore.xcframework
-          xcodebuild -create-xcframework -library libMaaDerpLearning.dylib -output MaaDerpLearning.xcframework
+          xcodebuild -create-xcframework -library libfastdeploy_ppocr.dylib -output fastdeploy_ppocr.xcframework
           xcodebuild -create-xcframework -library libonnxruntime.*.dylib -output ONNXRuntime.xcframework
           xcodebuild -create-xcframework -library libopencv*.dylib -output OpenCV.xcframework
         working-directory: build
@@ -386,9 +471,9 @@ jobs:
       - name: Build MAA
         run: |
           if ${{ startsWith(github.ref, 'refs/tags/v') }}; then
-            xcodebuild -project MeoAsstMac.xcodeproj -scheme MAA archive -archivePath MAA.xcarchive -configuration Release
+            xcodebuild -scheme MAA archive -archivePath MAA.xcarchive
           else
-            xcodebuild CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="-" ONLY_ACTIVE_ARCH=NO -project MeoAsstMac.xcodeproj -scheme MAA archive -archivePath MAA.xcarchive -configuration Debug
+            xcodebuild CODE_SIGNING_ALLOWED=NO -scheme MAA archive -archivePath MAA.xcarchive
           fi
         working-directory: src/MaaMacGui
 
@@ -401,10 +486,8 @@ jobs:
       - name: Create Disk Image
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          mkdir Image
-          mv Export/MAA.app Image/
-          ln -s /Applications Image/
-          hdiutil create -volname MAA -srcfolder Image -ov -fs APFS -format ULMO MAA.dmg
+          create-dmg Export/MAA.app
+          mv MAA*.dmg MAA.dmg
         working-directory: src/MaaMacGui
 
       - name: Archive Debug Symbols
@@ -425,16 +508,25 @@ jobs:
 
       - name: Notarize Image
         if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          find . -name "*.dmg" | while read dmg; do
-            codesign -s "$NOTARY_TEAM" --timestamp ${dmg}
-            xcrun notarytool submit --apple-id "$NOTARY_USER" --password "$NOTARY_PASSWD" --team-id "$NOTARY_TEAM" --wait ${dmg}
-            xcrun stapler staple ${dmg}
-          done
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          timeout_minutes: 15
+          command: |
+            cd release
+            echo "$APPSTORE_KEY" > "AuthKey_${APPSTORE_KEYID}.p8"
+            dmg="MAA-${{ needs.meta.outputs.tag }}-macos-universal.dmg"
+            xcrun notarytool submit -k "AuthKey_${APPSTORE_KEYID}.p8" -d "$APPSTORE_KEYID" -i "$ISSUER_ID" --wait ${dmg}
         env:
-          NOTARY_USER: ${{ secrets.HGUANDL_NOTARY_AAPL_ID }}
-          NOTARY_PASSWD: ${{ secrets.HGUANDL_NOTARY_PASSWD }}
-          NOTARY_TEAM: ${{ secrets.HGUANDL_SIGN_IDENTITY }}
+          APPSTORE_KEYID: ${{ secrets.HGUANDL_APPSTORE_KEYID }}
+          APPSTORE_KEY: ${{ secrets.HGUANDL_APPSTORE_KEY }}
+          ISSUER_ID: ${{ secrets.HGUANDL_APPSTORE_ISSUER }}
+
+      - name: Attach Notarization Tickets
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          dmg="MAA-${{ needs.meta.outputs.tag }}-macos-universal.dmg"
+          xcrun stapler staple ${dmg}
         working-directory: release
 
       - name: Upload MAA to Github
@@ -444,8 +536,12 @@ jobs:
           path: ${{ startsWith(github.ref, 'refs/tags/v') && 'release/MAA*' || 'src/MaaMacGui/MAA.xcarchive/**' }}
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [meta, windows, ubuntu, macOS-GUI]
+    # Prevent duplicate runs on organization branches with PRs
+    if: (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name !=
+      github.event.pull_request.base.repo.full_name) && startsWith(github.ref, 'refs/tags/v')
+
+    needs: [meta, windows, ubuntu, macOS-Core, macOS-GUI]
     runs-on: ubuntu-latest
     steps:
       - name: Download MAA from Github
@@ -462,12 +558,19 @@ jobs:
           find . -type f | while read f; do mv -fvt . $f; done
 
       - name: Release to Github
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body_path: CHANGELOG.md
           files: |
             assets/*
           prerelease: ${{ needs.meta.outputs.prerelease != 'false' }}
+
+      - name: Trigger MirrorChyan
+        run: |
+          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan
+          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release_note
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trigger secondary workflows # ref: https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow
         run: |
